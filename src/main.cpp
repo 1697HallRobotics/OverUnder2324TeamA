@@ -29,8 +29,8 @@ motor right_front = motor(PORT5, true); //11w
 motor right_back = motor(PORT7, true); //11w
 
 //mandible motors
-motor left_mandible = motor(PORT8, true); //5.5w
-motor right_mandible = motor(PORT9, false); //5.5w
+motor left_mandible = motor(PORT8, false); //5.5w
+motor right_mandible = motor(PORT9, true); //5.5w
 
 //catapult motor
 motor catapult = motor(PORT10, false); //11w
@@ -46,7 +46,8 @@ motor_group mandibles = motor_group(left_mandible, right_mandible);
 
 /* global variables */
 const motor motors[] = {left_front,left_back,right_front, right_back};
-const double DEADZONE = 10.1;
+
+const double DEADZONE = 15.1;
 int driveType = 0;
 /* end */
 
@@ -80,7 +81,7 @@ void brain_display_ports() {
   Brain.Screen.print("\tLeft Back: 6 -- Right Back: 7"); Brain.Screen.newLine();
   Brain.Screen.print("Other:"); Brain.Screen.newLine();
   Brain.Screen.print("\tCatapult: 10"); Brain.Screen.newLine();
-  Brain.Screen.print("\tPneumatics: 3WPA"); Brain.Screen.newLine();
+  //Brain.Screen.print("\tPneumatics: 3WPA"); Brain.Screen.newLine();
 }
 void brain_smiley() {
   Brain.Screen.clearScreen();
@@ -99,7 +100,9 @@ void brain_smiley() {
   Brain.Screen.drawCircle(180,144,20,white);//eye 2
   Brain.Screen.drawCircle(190,144,10,black);//pupil 2
 }
-
+void image_1() {
+  Brain.Screen.drawImageFromFile("wonky-lucas.png",0,0);
+}
 /*---------------------------------------------------------------------------*/
 /*                              Ctrllr Graphics                              */
 /*---------------------------------------------------------------------------*/
@@ -146,8 +149,9 @@ void pre_auton(void) {
     Motor.setBrake(coast);
   
   brain_display_ports(); //adds graphics to the brain
-  choose_drive_controller(); //provides useful information to the driver
+  //provides useful information to the driver
 }
+
 
 /*---------------------------------------------------------------------------*/
 /*                                Drive Controls                             */
@@ -168,14 +172,15 @@ void dynamic_drive() {
     the porportion between the left drive and right drive change dynamically based on the position of the joystick
   */
   y = i*Ctrllr.Axis3.position();
-  rx = i*Ctrllr.Axis1.position();
+  x = i*Ctrllr.Axis1.position();
+  //rx = i*Ctrllr.Axis1.position();
 
-  if(fabs(rx) < DEADZONE && fabs(y) < DEADZONE)
+  if(fabs(x) < DEADZONE && fabs(y) < DEADZONE)
     full_drive.stop();
   else {
-    t = 100/fmax(fabs(rx) + fabs(y),100);
-    left_drive.spin(fwd, (y - rx)*t, pct);
-    right_drive.spin(fwd, (y + rx)*t, pct);
+    t = 2*100/fmax(fabs(x) + fabs(y),100);
+    left_drive.spin(fwd, (y - x)*t, pct);
+    right_drive.spin(fwd, (y + x)*t, pct);
   }
 }
 void tank_drive() {
@@ -212,8 +217,8 @@ void simple_drive() {
     right_drive.spin(fwd, y*10, pct);
   }
   else {
-    left_drive.spin(fwd, x*10, pct);
-    right_drive.spin(fwd, -x*10, pct);
+    left_drive.spin(fwd, -x*10, pct);
+    right_drive.spin(fwd, x*10, pct);
   }
 }
 
@@ -379,16 +384,17 @@ void auton_right_23() {
   //placed on the right facing the goal
   //first step is to place the alliance triball inside the goal
   //move(forward,80,1200); //forwards
-  curve(forward,40,90,1200);
-  outtake(1000); //outtake alliance Tetraball for 1 second
+  move(forward,80,1400);
+  outtake(2000); //outtake alliance Tetraball for 1 second
   move(reverse, 70, 800); //backwards
-  rotate(reverse,70,1250); //90* left (testing needed)
-  curve(fwd,70,80,3000); //left:80, right:60
+  rotate(reverse,60,1250); //90* left (testing needed)
+  curve(fwd,50,80,3000); //left:80, right:60
 }
 void auton_right_123() {
   move(forward,80,1200);
-  outtake(1000);
-  move(reverse, 50, 800);
+  outtake(2000);
+  move(forward,50,500);
+  move(reverse, 50, 850);
   rotate(forward,70,1250);
   move(forward,70,1000);
   intake(2000);
@@ -397,11 +403,11 @@ void auton_right_123() {
 }
 
 void auton_left_23() { //basically the reverse of auton right
-  move(forward,80,1200);
-  outtake(1000);
-  move(reverse, 50, 800);
-  rotate(forward,70,1250);
-  curve(fwd,80,70,3000);
+  move(forward,80,1400);
+  outtake(2000); //outtake alliance Tetraball for 1 second
+  move(reverse, 70, 900);
+  rotate(forward,60,1250);
+  curve(fwd,80,50,3000);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -409,7 +415,7 @@ void auton_left_23() { //basically the reverse of auton right
 /*---------------------------------------------------------------------------*/
 
 int main() {
-  Competition.autonomous(auton_right_23);
+  Competition.autonomous(auton_left_23);
   Competition.drivercontrol(usercontrol);
   pre_auton();
 
