@@ -8,19 +8,22 @@
 /*----------------------------------------------------------------------------*/
 
 #include "vex.h"
-
 using namespace vex;
-
+#include "string"
 /*---------------------------------------------------------------------------*/
 /*                               Configurations                              */
+/*                            Broken Ports: 2,3,4                            */
 /*                               max watts: 88                               */
-/*                              total watts: 55                              */
+/*                              total watts: 66                              */
 /*---------------------------------------------------------------------------*/
+
+//PORTS 2, 3, 4 are BROKEN
 
 //general
 brain Brain;
 competition Competition;
-controller Ctrllr = controller();
+controller Controller = controller();
+timer timer_1;
 
 //drive motors
 motor left_front = motor(PORT1, false); //11w
@@ -35,8 +38,10 @@ motor right_mandible = motor(PORT9, true); //5.5w
 //catapult motor
 motor catapult = motor(PORT10, false); //11w
 
-//pneumatics
+//triport devices
 pneumatics Pneumatics = pneumatics(Brain.ThreeWirePort.A);
+limit lever = limit(Brain.ThreeWirePort.B); //can either be Bumper Switch or Limit Switch-- same thing
+led led_1 = led(Brain.ThreeWirePort.C);
 
 //motor groups
 motor_group left_drive = motor_group(left_front, left_back);
@@ -46,7 +51,7 @@ motor_group mandibles = motor_group(left_mandible, right_mandible);
 
 /* global variables */
 const motor motors[] = {left_front,left_back,right_front, right_back};
-
+const std::string images[] = {"wonky-lucas.png"};
 const double DEADZONE = 15.1;
 int driveType = 0;
 /* end */
@@ -63,7 +68,7 @@ void choose_drive_brain() {
 
   waitUntil(Brain.Screen.pressing());
   int x = Brain.Screen.xPosition(); //last x position
-
+  Brain.Screen.clearScreen();
   if(x < 160)
     driveType = 0;
   else if(x < 320)
@@ -81,7 +86,9 @@ void brain_display_ports() {
   Brain.Screen.print("\tLeft Back: 6 -- Right Back: 7"); Brain.Screen.newLine();
   Brain.Screen.print("Other:"); Brain.Screen.newLine();
   Brain.Screen.print("\tCatapult: 10"); Brain.Screen.newLine();
-  //Brain.Screen.print("\tPneumatics: 3WPA"); Brain.Screen.newLine();
+  //Brain.Screen.print("\tPneumatics: 3WP A"); Brain.Screen.newLine();
+  Brain.Screen.print("Limit Switch: 3WP B"); Brain.Screen.newLine();
+  Brain.Screen.print("Leds: 3WP C-H"); Brain.Screen.newLine();
 }
 void brain_smiley() {
   Brain.Screen.clearScreen();
@@ -100,11 +107,16 @@ void brain_smiley() {
   Brain.Screen.drawCircle(180,144,20,white);//eye 2
   Brain.Screen.drawCircle(190,144,10,black);//pupil 2
 }
-void image_1() {
-  Brain.Screen.drawImageFromFile("wonky-lucas.png",0,0);
+
+int image = 0;
+void cycle_image() {
+  if(Brain.SDcard.isInserted()){
+  image++; image %= sizeof(images);
+  Brain.Screen.drawImageFromFile(images[image].c_str(), 0, 0);
+  } else brain_smiley();
 }
 /*---------------------------------------------------------------------------*/
-/*                              Ctrllr Graphics                              */
+/*                            Controller Graphics                            */
 /*---------------------------------------------------------------------------*/
 void Ychosen(){
   driveType = 0;
@@ -116,42 +128,22 @@ void Achosen(){
   driveType = 2;
 }
 void choose_drive_controller() {
-  Ctrllr.Screen.setCursor(1,1);
-  Ctrllr.Screen.print("Y: Dynamic Drive"); Ctrllr.Screen.newLine();
-  Ctrllr.Screen.print("X: Tank Drive"); Ctrllr.Screen.newLine();
-  Ctrllr.Screen.print("A: Simple Drive");
+  Controller.Screen.setCursor(1,1);
+  Controller.Screen.print("Y: Dynamic Drive"); Controller.Screen.newLine();
+  Controller.Screen.print("X: Tank Drive"); Controller.Screen.newLine();
+  Controller.Screen.print("A: Simple Drive");
 
-  waitUntil(Ctrllr.ButtonY.pressing() || Ctrllr.ButtonX.pressing() || Ctrllr.ButtonA.pressing());
-  Ctrllr.ButtonY.released(Ychosen);
-  Ctrllr.ButtonX.released(Xchosen);
-  Ctrllr.ButtonA.released(Achosen);
+  waitUntil(Controller.ButtonY.pressing() || Controller.ButtonX.pressing() || Controller.ButtonA.pressing());
+  Controller.ButtonY.released(Ychosen);
+  Controller.ButtonX.released(Xchosen);
+  Controller.ButtonA.released(Achosen);
 }
 void Ctrllr_graphics_temps() {
-  Ctrllr.Screen.setCursor(2,1);
-  Ctrllr.Screen.print("LF F: %d, RF F: %d", (int) left_front.temperature(pct), (int) right_front.temperature(pct));
-  Ctrllr.Screen.newLine();
-  Ctrllr.Screen.print("LB F: %d, RB F: %d", (int) left_back.temperature(pct), (int) right_back.temperature(pct));
+  Controller.Screen.setCursor(2,1);
+  Controller.Screen.print("LF F: %d, RF F: %d", (int) left_front.temperature(fahrenheit), (int) right_front.temperature(fahrenheit));
+  Controller.Screen.newLine();
+  Controller.Screen.print("LB F: %d, RB F: %d", (int) left_back.temperature(fahrenheit), (int) right_back.temperature(fahrenheit));
 }
-
-/*---------------------------------------------------------------------------*/
-/*                          Pre-Autonomous Functions                         */
-/*---------------------------------------------------------------------------*/
-
-void vexcodeInit(void) {
-}
-
-void pre_auton(void) {
-  vexcodeInit(); // DO NOT REMOVE
-
-  catapult.setPosition(0,degrees); //sets default catauplt position
-
-  for(motor Motor: motors) //sets the break mode for each motor
-    Motor.setBrake(coast);
-  
-  brain_display_ports(); //adds graphics to the brain
-  //provides useful information to the driver
-}
-
 
 /*---------------------------------------------------------------------------*/
 /*                                Drive Controls                             */
@@ -163,17 +155,16 @@ void reverse_drive() {
 }
 
 double x, y, rx, ry, t;
-//axi: 4, 3, 1, 2
+//axi: 4, 3, 1, 2, temp
 void dynamic_drive() {
-  Ctrllr.Screen.print("Dynamic Drive");
   /*
     verticle movement on the left joystick is forwards and backwards
     horizontal movement on the right joystick is rotation left and right
     the porportion between the left drive and right drive change dynamically based on the position of the joystick
   */
-  y = i*Ctrllr.Axis3.position();
-  x = i*Ctrllr.Axis1.position();
-  //rx = i*Ctrllr.Axis1.position();
+  y = i*Controller.Axis3.position();
+  x = i*Controller.Axis1.position();
+  //rx = i*Controller.Axis1.position();
 
   if(fabs(x) < DEADZONE && fabs(y) < DEADZONE)
     full_drive.stop();
@@ -184,13 +175,12 @@ void dynamic_drive() {
   }
 }
 void tank_drive() {
-  Ctrllr.Screen.print("Tank Drive");
   /*
     left joystick controls the speed of the left drive
     right joystick controls the speed of the right drive
   */
-  y = i*Ctrllr.Axis3.position();
-  ry = i*Ctrllr.Axis2.position();
+  y = i*Controller.Axis3.position();
+  ry = i*Controller.Axis2.position();
 
   if(fabs(y) < DEADZONE && fabs(ry) < DEADZONE)
     full_drive.stop(brake);
@@ -201,14 +191,13 @@ void tank_drive() {
 }
 
 void simple_drive() {
-  Ctrllr.Screen.print("Simple Drive");
   /*
     verticle movement on the joystick is forwards and backwards
     horizontal movement on the joystick is rotation left and right
     the speed is always 100%
   */
-  y = i*Ctrllr.Axis3.position();
-  x = i*Ctrllr.Axis4.position();
+  y = i*Controller.Axis3.position();
+  x = i*Controller.Axis4.position();
 
   if(fabs(y) < DEADZONE && fabs(x) < DEADZONE)
     full_drive.stop();
@@ -241,35 +230,30 @@ void drive() {
 /*---------------------------------------------------------------------------*/
 
 void run_mandibles(){
-  if(Ctrllr.ButtonR1.pressing() == Ctrllr.ButtonR2.pressing())
+  if(Controller.ButtonR1.pressing() == Controller.ButtonR2.pressing())
     //if both or no mandibles are being run they stop
     mandibles.stop(brakeType::hold);
-  else if(Ctrllr.ButtonR1.pressing()) { // hold R1 to outtake
+  else if(Controller.ButtonR1.pressing()) { // hold R1 to outtake
     mandibles.spin(directionType::fwd,100,percentUnits::pct);
-    Ctrllr.rumble("long");
   }
-  else if(Ctrllr.ButtonR2.pressing()) { // hold L1 to intake
+  else if(Controller.ButtonR2.pressing()) { // hold L1 to intake
     mandibles.spin(directionType::rev,100,percentUnits::pct);
-    Ctrllr.rumble("long");
   }
 }
 
 void run_catapult() { // needs testing
   catapult.stop(coast);
-  wait(800,msec);
-  Ctrllr.rumble("short");
+  wait(500,msec);
   catapult.spinTo(0, degrees, 100, velocityUnits::pct);
 }
 void continous_catapult() {//goes inside the loop
   //runs the catapult while L2 is pressed
-  if(Ctrllr.ButtonL2.pressing()) {
+  if(Controller.ButtonL2.pressing()) {
     run_catapult();
-    Ctrllr.rumble("long");
   }
 }
 
 void pneumatics_open() {
-  Ctrllr.rumble("short");
   Pneumatics.open();
 }
 void pneumatics_close() {
@@ -298,27 +282,28 @@ Joysticks depend on the drive:
   
 */
 void usercontrol() {
-  //Ctrllr Events
-  Ctrllr.ButtonUp.pressed(brain_display_ports);
-  //Ctrllr.ButtonRight.pressed(choose_drive_controller);
-  Ctrllr.ButtonDown.pressed(brain_smiley);
-  //Ctrllr.ButtonLeft.pressed(choose_drive_brain);
+  //Controller Events
+  Controller.ButtonUp.pressed(brain_display_ports);
+  //Controller.ButtonRight.pressed(choose_drive_controller);
+  Controller.ButtonDown.pressed(brain_smiley);
+  //Controller.ButtonLeft.pressed(choose_drive_brain);
 
-  //Ctrllr.ButtonA.pressed(pneumatics_open);
-  //Ctrllr.ButtonB.pressed(pneumatics_close);
+  //Controller.ButtonA.pressed(pneumatics_open);
+  //Controller.ButtonB.pressed(pneumatics_close);
   
-  Ctrllr.ButtonL2.pressed(reverse_drive);
+  Controller.ButtonL2.pressed(reverse_drive);
 
   //Continous Events
   while (1) { 
-    Ctrllr.Screen.clearScreen();//resets controller screen
-    Ctrllr.Screen.setCursor(1,1);
+    Controller.Screen.clearScreen(); //resets controller screen
+    Controller.Screen.setCursor(1,1);
 
     dynamic_drive(); //rewrite as "drive();" for swapping capabilities 
     run_mandibles(); //hold
     //continous_catapult(); //hold
-
-    //Ctrllr_graphics_temps(); //update
+    if(timer_1.time() % 1000 < 10){ //runs the following functions every 1-0.99 seconds
+      Ctrllr_graphics_temps(); //update
+    }
   }
 }
 
@@ -410,12 +395,41 @@ void auton_left_23() { //basically the reverse of auton right
   curve(fwd,80,50,3000);
 }
 
+void auton() {
+  if (!led_1.value()) 
+    auton_left_23();
+  else 
+    auton_right_23();
+}
+
+/*---------------------------------------------------------------------------*/
+/*                          Pre-Autonomous Functions                         */
+/*---------------------------------------------------------------------------*/
+
+void vexcodeInit(void) {
+}
+
+void pre_auton(void) {
+  vexcodeInit(); // DO NOT REMOVE
+
+  catapult.setPosition(0,degrees); //sets default catauplt position
+
+  for(motor Motor: motors) //sets the break mode for each motor
+    Motor.setBrake(coast);
+  
+  if(lever.value())
+    led_1.on();
+
+  brain_display_ports(); //adds graphics to the brain
+  //provides useful information to the driver
+}
+
 /*---------------------------------------------------------------------------*/
 /*                                    Main                                   */
 /*---------------------------------------------------------------------------*/
 
 int main() {
-  Competition.autonomous(auton_left_23);
+  Competition.autonomous(auton);
   Competition.drivercontrol(usercontrol);
   pre_auton();
 
